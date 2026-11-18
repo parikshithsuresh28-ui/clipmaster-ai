@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10101d">
+<title>ClipMaster AI — Local Clip Maker</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0b13;--panel:#171725;--line:#302e46;--muted:#aaa8c0;--purple:#9565ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 0%,#28204b 0,transparent 34%),var(--bg);color:#f6f5ff;font:15px/1.5 system-ui,sans-serif}
+main{max-width:900px;margin:auto;padding:20px 15px 55px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}.brand{font-weight:850;font-size:19px;display:flex;align-items:center;gap:10px}.logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#a17aff,#5b43d1)}.tag{font-size:11px;color:#c9baff;border:1px solid #4b406f;border-radius:30px;padding:5px 10px}
+h1{font-size:clamp(32px,7vw,52px);line-height:1.08;letter-spacing:-1.5px;margin:10px 0}h1 span{background:linear-gradient(90deg,#b69bff,#6ee4ef);background-clip:text;color:transparent}.muted{color:var(--muted)}.center{text-align:center;margin:0 auto 24px;max-width:650px}
+.card{background:#171725ef;border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:14px}.label{font-weight:750;display:block;margin-bottom:8px}
+input[type=url],input[type=number]{width:100%;background:#0e0e18;border:1px solid #39384e;border-radius:11px;color:white;padding:13px;font:inherit;min-width:0}
+.row{display:flex;gap:9px}.row>*{min-width:0}.row input{flex:1}
+button{border:0;border-radius:11px;background:linear-gradient(135deg,#9b70ff,#6849db);color:#fff;padding:12px 16px;font-weight:800;cursor:pointer}button.secondary{background:#28263a;border:1px solid #45415e}button:disabled{opacity:.45;cursor:not-allowed}
+.small{font-size:12px;color:var(--muted);margin:8px 0 0}.status{display:none;padding:11px 13px;border-radius:10px;background:#211d35;border:1px solid #49406e;margin-top:12px;color:#ded6ff;overflow-wrap:anywhere}
+.upload{display:block;text-align:center;padding:20px;border:1px dashed #5b5676;border-radius:13px;color:var(--muted);cursor:pointer}.upload input{display:none}
+video{width:100%;max-height:380px;background:#000;border-radius:12px;margin-top:12px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.control label{font-size:13px;color:#d6d3e7;display:block;margin-bottom:5px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.actions button{flex:1}
+.notice{font-size:13px;color:#f0d49b;background:#2a2117;border:1px solid #59432a;border-radius:12px;padding:12px;margin-top:15px}
+progress{width:100%;height:12px;margin-top:12px;accent-color:#9b70ff}.result{margin-top:14px;padding:13px;border:1px solid #3b365a;border-radius:12px;background:#11111c}.result a{color:#c9baff;font-weight:700}
+@media(max-width:600px){.row{flex-direction:column}.row button{width:100%}.card{padding:15px}.controls{gap:8px}}
+</style></head>
+<body><main>
+<header class="top"><div class="brand"><div class="logo">✂</div>ClipMaster AI</div><div class="tag">LOCAL CLIP MAKER</div></header>
+<section class="center"><div class="tag">FREE · BROWSER-BASED PROCESSING</div><h1>Make a clip.<br><span>Right on your phone.</span></h1><p class="muted">Load a video file you own, choose a time range, and export a trimmed MP4 in your browser.</p></section>
+<section class="card">
+<label class="label" for="yt">YouTube URL preview (not downloadable)</label><div class="row"><input id="yt" type="url" placeholder="https://www.youtube.com/watch?v=..."><button id="preview">Preview link</button></div><div class="small">YouTube embeds are preview-only here. For clipping, upload the original video file that you own or are authorized to edit.</div><div id="ytstatus" class="status" role="status"></div><div id="embed"></div>
+</section>
+<section class="card">
+<label class="label" for="file">1. Choose a video file</label><label class="upload" for="file">📁<br><b style="color:#fff">Select video from your phone</b><br><small>MP4, MOV, WebM and other browser-supported formats</small><input id="file" type="file" accept="video/*"></label>
+<div id="editor" hidden>
+<video id="player" controls playsinline></video>
+<div class="controls">
+<div class="control"><label for="start">Start time (seconds)</label><input id="start" type="number" min="0" step="0.1" value="0"></div>
+<div class="control"><label for="end">End time (seconds)</label><input id="end" type="number" min="0" step="0.1" value="15"></div>
+</div>
+<div class="actions"><button id="setStart" class="secondary">Set start to current time</button><button id="setEnd" class="secondary">Set end to current time</button></div>
+<div class="actions"><button id="export">2. Export selected clip (MP4)</button></div>
+<div id="workstatus" class="status" role="status"></div><progress id="progress" value="0" max="100" hidden></progress><div id="result"></div>
+</div></section>
+<div class="notice"><b>Important:</b> Video processing runs on your device using FFmpeg WebAssembly downloaded from public CDNs. The first export downloads a large processing engine and may be slow or fail on low-memory phones. Keep this page open. This is manual trimming, not AI highlight detection yet. No paid AI API is used.</div>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+function videoId(s){try{const u=new URL(s);if(u.hostname==='youtu.be')return u.pathname.slice(1);if(u.hostname.endsWith('youtube.com')){if(u.pathname==='/watch')return u.searchParams.get('v');if(u.pathname.startsWith('/shorts/'))return u.pathname.split('/')[2];if(u.pathname.startsWith('/embed/'))return u.pathname.split('/')[2]}}catch(e){}return null}
+$('preview').onclick=()=>{const id=videoId($('yt').value.trim());$('ytstatus').style.display='block';if(!id){$('ytstatus').textContent='Enter a valid YouTube URL.';$('embed').innerHTML='';return;}$('ytstatus').textContent='Preview only. Upload an authorized source video below to create a clip.';$('embed').innerHTML='<iframe title="YouTube preview" width="100%" height="240" style="border:0;border-radius:12px;margin-top:12px" src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'" allowfullscreen></iframe>'};
+let sourceFile=null, ffmpeg=null, objectUrl=null, enginePromise=null;
+const say=t=>{$('workstatus').style.display='block';$('workstatus').textContent=t};
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;sourceFile=f;if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=URL.createObjectURL(f);$('player').src=objectUrl;$('editor').hidden=false;$('result').innerHTML='';say('Video loaded locally.');};
+$('player').onloadedmetadata=()=>{$('start').value=0;$('end').value=Math.min(15,$('player').duration||15);say('Ready · video duration '+$('player').duration.toFixed(1)+' seconds.')};
+$('setStart').onclick=()=>{$('start').value=$('player').currentTime.toFixed(1)};
+$('setEnd').onclick=()=>{$('end').value=$('player').currentTime.toFixed(1)};
+async function loadEngine(){
+ if(ffmpeg)return ffmpeg;
+ if(enginePromise)return enginePromise;
+ enginePromise=(async()=>{
+  say('Loading video engine. First-time download can be large; keep this page open…');
+  const {FFmpeg}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+  const {toBlobURL}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  const core='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+  const instance=new FFmpeg();
+  instance.on('log',({message})=>{if(message)say('Processing: '+message.slice(0,180))});
+  instance.on('progress',({progress})=>{$('progress').hidden=false;$('progress').value=Math.max(0,Math.min(100,Math.round(progress*100)))});
+  await instance.load({coreURL:await toBlobURL(core+'/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(core+'/ffmpeg-core.wasm','application/wasm')});
+  ffmpeg=instance;return instance;
+ })();
+ try{return await enginePromise}catch(err){enginePromise=null;throw err}
+}
+$('export').onclick=async()=>{
+ if(!sourceFile){say('Choose a video file first.');return}
+ const start=Number($('start').value),end=Number($('end').value);
+ if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>($('player').duration||Infinity)){say('Check the start and end times. End must be after start and within the video.');return}
+ $('export').disabled=true;$('result').innerHTML='';$('progress').hidden=false;$('progress').value=0;
+ try{
+  const engine=await loadEngine();
+  const ext=(sourceFile.name.split('.').pop()||'mp4').toLowerCase().replace(/[^a-z0-9]/g,'')||'mp4';
+  const input='input.'+ext,output='clipmaster-output.mp4';
+  say('Preparing video file…');
+  await engine.writeFile(input,new Uint8Array(await sourceFile.arrayBuffer()));
+  say('Exporting selected segment. Please keep this tab open…');
+  await engine.exec(['-ss',String(start),'-i',input,'-t',String(end-start),'-map','0:v:0','-map','0:a?','-c:v','libx264','-preset','ultrafast','-crf','28','-c:a','aac','-movflags','+faststart',output]);
+  const data=await engine.readFile(output);
+  const blob=new Blob([data.buffer],{type:'video/mp4'}),url=URL.createObjectURL(blob);
+  $('result').innerHTML='<div class="result"><b>Your clip is ready.</b><br><a id="download" download="clipmaster-clip.mp4">Download MP4 clip</a><video id="resultVideo" controls playsinline></video></div>';
+  $('download').href=url;$('resultVideo').src=url;$('progress').value=100;say('Export complete.');
+  await engine.deleteFile(input);await engine.deleteFile(output);
+ }catch(err){console.error(err);say('Could not export: '+(err?.message||String(err))+' Try a shorter or smaller video, or a browser with WebAssembly support.');}
+ finally{$('export').disabled=false}
+};
+</script></body></html>
